@@ -27,6 +27,16 @@ export interface PostureFlags {
   stateChecked: boolean;
   /** Tin header jku/jwks_uri trong token để nạp key verify (lỗ SSRF/key injection). */
   trustJku: boolean;
+  /** Web app: dùng truy vấn tham số hoá (chống SQL injection). */
+  paramQueries: boolean;
+  /** Web app: escape HTML khi render dữ liệu người dùng (chống XSS). */
+  escapeOutput: boolean;
+  /** Web app: chặn địa chỉ nội bộ/metadata khi fetch (chống SSRF). */
+  ssrfGuard: boolean;
+  /** Web app: giam đường dẫn trong thư mục gốc (chống path traversal). */
+  pathConfine: boolean;
+  /** Web app: truyền tham số dạng mảng, không nối chuỗi shell (chống command injection). */
+  cmdSafeArgs: boolean;
 }
 
 export const HARDENED: PostureFlags = {
@@ -45,6 +55,11 @@ export const HARDENED: PostureFlags = {
   sessionRegenerate: true,
   stateChecked: true,
   trustJku: false,
+  paramQueries: true,
+  escapeOutput: true,
+  ssrfGuard: true,
+  pathConfine: true,
+  cmdSafeArgs: true,
 };
 
 export interface AuditCheck {
@@ -72,6 +87,11 @@ const ALIASES: Record<string, keyof PostureFlags> = {
   session: 'sessionRegenerate',
   state: 'stateChecked',
   jku: 'trustJku',
+  sqli: 'paramQueries',
+  xss: 'escapeOutput',
+  ssrf: 'ssrfGuard',
+  traversal: 'pathConfine',
+  cmdi: 'cmdSafeArgs',
 };
 
 /**
@@ -190,6 +210,31 @@ export class Posture {
         id: 'logout', title: tr('Back-channel logout bật', 'Back-channel logout is on'), pass: f.backchannelLogout,
         detail: f.backchannelLogout ? tr('Auth server báo cho các app khi đăng xuất.', 'The auth server notifies apps on logout.') : tr('Đăng xuất không lan ra app khác - phiên zombie.', 'Logout does not propagate to other apps — zombie sessions.'),
         fix: 'harden logout on',
+      },
+      {
+        id: 'sqli', title: tr('Truy vấn tham số hoá (chống SQLi)', 'Parameterized queries (anti-SQLi)'), pass: f.paramQueries,
+        detail: f.paramQueries ? tr('Input là dữ liệu, không phải mã.', 'Input is data, never code.') : tr("Query nối chuỗi - dấu ' trong input phá được câu lệnh.", "Queries concatenate strings — a ' in the input breaks the statement."),
+        fix: 'harden sqli on',
+      },
+      {
+        id: 'xss', title: tr('Escape HTML đầu ra (chống XSS)', 'Escape HTML output (anti-XSS)'), pass: f.escapeOutput,
+        detail: f.escapeOutput ? tr('Dữ liệu người dùng được escape trước khi render.', 'User data is escaped before rendering.') : tr('Nhúng thô HTML người dùng - <script> chạy trong trình duyệt nạn nhân.', "Raw user HTML is embedded — <script> runs in the victim's browser."),
+        fix: 'harden xss on',
+      },
+      {
+        id: 'ssrf', title: tr('Chặn SSRF tới địa chỉ nội bộ', 'Block SSRF to internal addresses'), pass: f.ssrfGuard,
+        detail: f.ssrfGuard ? tr('Từ chối loopback, private và 169.254.169.254.', 'Refuses loopback, private and 169.254.169.254.') : tr('Fetch được mọi URL - chạm tới metadata cloud và dịch vụ nội bộ.', 'Fetches any URL — reaches cloud metadata and internal services.'),
+        fix: 'harden ssrf on',
+      },
+      {
+        id: 'traversal', title: tr('Giam đường dẫn trong web root (chống traversal)', 'Confine paths to web root (anti-traversal)'), pass: f.pathConfine,
+        detail: f.pathConfine ? tr('Chuẩn hoá trước rồi mới kiểm tra biên.', 'Canonicalizes first, then checks the boundary.') : tr('Nối đường dẫn thô - chuỗi ../ đọc được /etc/passwd.', 'Joins raw paths — a ../ string reads /etc/passwd.'),
+        fix: 'harden traversal on',
+      },
+      {
+        id: 'cmdi', title: tr('Tham số dạng mảng (chống command injection)', 'Array args (anti-command-injection)'), pass: f.cmdSafeArgs,
+        detail: f.cmdSafeArgs ? tr('execFile với mảng tham số, không có shell.', 'execFile with an argument array, no shell.') : tr('Nối chuỗi vào sh -c - ; cat /etc/shadow chạy được.', 'Concatenates into sh -c — ; cat /etc/shadow executes.'),
+        fix: 'harden cmdi on',
       },
     ];
   }

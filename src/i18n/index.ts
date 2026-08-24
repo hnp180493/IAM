@@ -95,9 +95,11 @@ const STRINGS: Record<string, Localized> = {
 
   // section blurbs
   'sec.exploit': { vi: 'Hack một lỗ có thật, rồi vá.', en: 'Hack a real hole, then patch it.' },
+  'sec.web': { vi: 'OWASP Top 10: SQLi, XSS, SSRF, traversal, RCE.', en: 'OWASP Top 10: SQLi, XSS, SSRF, traversal, RCE.' },
   'sec.console': { vi: 'Console thật, không có đáp án để bấm thử.', en: 'A real console, no answers to click through.' },
   'sec.knobs': { vi: 'Sửa cấu hình bằng dropdown, máy kiểm tra.', en: 'Fix config with dropdowns; the machine checks.' },
   'sec.exploit.title': { vi: 'Khai thác lỗ hổng', en: 'Exploit a vulnerability' },
+  'sec.web.title': { vi: 'OWASP web', en: 'OWASP web' },
   'sec.console.title': { vi: 'Thử thách gõ tay', en: 'Hands-on console challenges' },
   'sec.knobs.title': { vi: 'Thử thách cấu hình', en: 'Configuration challenges' },
 

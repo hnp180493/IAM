@@ -1,12 +1,13 @@
 import { t } from '../i18n';
 import type { LabSession, Line } from '../engine/LabSession';
 
-const COMMANDS = ['help', 'authorize', 'token', 'refresh', 'jwt', 'curl', 'policy', 'login', 'profile', 'revoke', 'tokens', 'jwks', 'discovery', 'pubkey', 'status', 'audit', 'harden', 'clear'];
+const COMMANDS = ['help', 'authorize', 'token', 'refresh', 'jwt', 'curl', 'policy', 'login', 'profile', 'revoke', 'app', 'tokens', 'jwks', 'discovery', 'pubkey', 'status', 'audit', 'harden', 'clear'];
 const SUB: Record<string, string[]> = {
   jwt: ['decode', 'verify', 'forge'],
   policy: ['eval'],
-  harden: ['plain', 'pkce', 'code', 'redirect', 'aud', 'aud-internal', 'signature', 'alg', 'ttl', 'logout'],
-  help: ['authorize', 'token', 'jwt', 'curl', 'policy', 'session'],
+  app: ['login', 'search', 'comment', 'render', 'fetch', 'download', 'ping'],
+  harden: ['plain', 'pkce', 'code', 'redirect', 'aud', 'aud-internal', 'signature', 'alg', 'ttl', 'logout', 'refresh', 'session', 'state', 'jku', 'sqli', 'xss', 'ssrf', 'traversal', 'cmdi'],
+  help: ['authorize', 'token', 'jwt', 'curl', 'policy', 'session', 'app'],
 };
 const FLAGS: Record<string, string[]> = {
   authorize: ['--pkce', '--scope', '--redirect', '--client', '--user', '--show-verifier'],

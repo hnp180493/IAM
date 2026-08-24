@@ -3,6 +3,7 @@ import { decodeJwt, verifyJwt, signHs256, signJwt, generateSigningKey, toJwk, ty
 import { b64uJson, randomToken, utf8 } from '../util/base64url';
 import { parse, flagStr, type ParsedCommand } from '../console/parse';
 import { PolicyEngine, type PolicyModel } from './PolicyEngine';
+import { WebVulnServer, WEB_HARDENED } from './WebVulnServer';
 import { tr } from '../i18n';
 import type { Clock } from '../core/Clock';
 import type { MockAuthServer } from '../server/MockAuthServer';
@@ -31,6 +32,18 @@ export interface Line {
  */
 export class LabSession {
   private policy = new PolicyEngine();
+  /** Web app dễ tổn thương cho track OWASP; đọc cùng bộ cờ posture. */
+  private web = new WebVulnServer(() => {
+    const f = this.posture?.flags;
+    if (!f) return WEB_HARDENED;
+    return {
+      paramQueries: f.paramQueries,
+      escapeOutput: f.escapeOutput,
+      ssrfGuard: f.ssrfGuard,
+      pathConfine: f.pathConfine,
+      cmdSafeArgs: f.cmdSafeArgs,
+    };
+  });
   readonly log: LogEntry[] = [];
   /** Token đặt tên, gọi lại bằng @tên. */
   readonly tokens = new Map<string, string>();
@@ -73,6 +86,7 @@ export class LabSession {
     this.authServer.reset();
     this.publicApi.reset();
     this.internalApi.reset();
+    this.web.reset();
     // Xoá override để posture (Red Team, exploit) quyết định. Lesson tự đặt lại.
     this.publicApi.clearAudienceOverride();
     this.internalApi.clearAudienceOverride();
@@ -116,6 +130,7 @@ export class LabSession {
         case 'status': return this.status();
         case 'audit': return this.auditCmd();
         case 'harden': return this.hardenCmd(p);
+        case 'app': return this.app(p, raw);
         default:
           return [{ text: tr(`Không có lệnh "${head}". Gõ help để xem danh sách.`, `No command "${head}". Type help to see the list.`), tone: 'err' }];
       }
@@ -164,6 +179,16 @@ export class LabSession {
         tr('profile [--sid S]           gọi endpoint cần phiên', 'profile [--sid S]           calls an endpoint that requires a session'),
         tr('revoke [--sid S]            huỷ phiên ngay lập tức', 'revoke [--sid S]            revokes the session immediately'),
       ],
+      app: [
+        tr('Web app dễ tổn thương — track OWASP. Bọc payload có dấu cách/nháy trong "..."',
+          'The vulnerable web app — OWASP track. Wrap any payload with spaces/quotes in "..."'),
+        tr('app login <user> <pass>       SQL injection (auth bypass)', 'app login <user> <pass>       SQL injection (auth bypass)'),
+        tr('app search <term>             SQL injection (UNION exfiltration)', 'app search <term>             SQL injection (UNION exfiltration)'),
+        tr('app comment <text> ; app render   Stored XSS', 'app comment <text> ; app render   Stored XSS'),
+        tr('app fetch <url>               SSRF', 'app fetch <url>               SSRF'),
+        tr('app download <path>           Path traversal', 'app download <path>           Path traversal'),
+        tr('app ping <host>               Command injection', 'app ping <host>               Command injection'),
+      ],
     };
 
     if (topic && H[topic]) return H[topic]!.map((text) => ({ text, tone: 'out' as const }));
@@ -177,6 +202,7 @@ export class LabSession {
       { text: tr('  curl         gọi resource API kèm bearer token', '  curl         calls a resource API with a bearer token'), tone: 'out' },
       { text: tr('  policy       eval quyền theo rbac | abac | rebac', '  policy       evaluate authorization via rbac | abac | rebac'), tone: 'out' },
       { text: tr('  login        đăng nhập kiểu phiên (help session)', '  login        session-style login (help session)'), tone: 'out' },
+      { text: tr('  app          web app dễ tổn thương — SQLi/XSS/SSRF/... (help app)', '  app          the vulnerable web app — SQLi/XSS/SSRF/... (help app)'), tone: 'out' },
       { text: tr('  tokens       liệt kê token đang giữ', '  tokens       lists the tokens currently held'), tone: 'out' },
       { text: tr('  jwks         xem public key server công bố', "  jwks         view the server's published public keys"), tone: 'out' },
       { text: tr('  discovery    xem tài liệu cấu hình của auth server', "  discovery    view the auth server's configuration document"), tone: 'out' },
@@ -665,5 +691,40 @@ export class LabSession {
 
   private discovery(): Line[] {
     return [{ text: JSON.stringify(this.authServer.discovery(), null, 2), tone: 'out' }];
+  }
+
+  // ------------------------------------------------- web app (OWASP)
+
+  /** Cổng vào web app dễ tổn thương. Mỗi subcommand nhắm một lỗ OWASP. */
+  private app(p: ParsedCommand, _raw: string): Line[] {
+    const sub = p.words[1];
+    let r;
+    switch (sub) {
+      case 'login':
+        r = this.web.login(p.words[2] ?? '', p.words[3] ?? '');
+        break;
+      case 'search':
+        r = this.web.search(p.words[2] ?? '');
+        break;
+      case 'comment':
+        r = this.web.comment(p.words[2] ?? '');
+        break;
+      case 'render':
+        r = this.web.render();
+        break;
+      case 'fetch':
+        r = this.web.fetch(p.words[2] ?? '');
+        break;
+      case 'download':
+        r = this.web.download(p.words[2] ?? '');
+        break;
+      case 'ping':
+        r = this.web.ping(p.words[2] ?? '');
+        break;
+      default:
+        return [{ text: tr('app <login|search|comment|render|fetch|download|ping>. Gõ: help app', 'app <login|search|comment|render|fetch|download|ping>. Type: help app'), tone: 'err' }];
+    }
+    this.record(`app ${sub}`, r.status < 400, r.data, r.status);
+    return r.lines as Line[];
   }
 }

@@ -6,6 +6,12 @@ import {
   chapterTitle, chapterBlurb, challengeSectionTitle,
 } from '../i18n/content';
 
+/** Escape khi nhét text động vào innerHTML. Một bài về XSS thì bản thân menu
+ *  cũng không được dính XSS: brief của thử thách web-xss chứa <script> thật. */
+function esc(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
 /**
  * Màn hình đầu tiên. k8sgames làm đúng một việc ở đây: cho thấy toàn bộ nội
  * dung có những gì, rồi vào chơi trong một click. Không có màn hình cấu hình
@@ -65,6 +71,7 @@ export class Menu {
         </header>
         ${this.redTeamSection()}
         ${this.challengeSection('ex', 'Khai thác lỗ hổng', t('sec.exploit'))}
+        ${this.challengeSection('web', 'OWASP web', t('sec.web'))}
         ${this.challengeSection('cc', 'Thử thách gõ tay', t('sec.console'))}
         ${this.challengeSection('ch', 'Thử thách cấu hình', t('sec.knobs'))}
         ${CHAPTERS.map((c) => this.chapter(c.id, c.title, c.blurb)).join('')}
@@ -144,8 +151,8 @@ export class Menu {
           <span class="ch-diff">${'●'.repeat(c.difficulty)}${'○'.repeat(3 - c.difficulty)}</span>
           ${done ? `<span class="ch-done">${t('card.done')}</span>` : ''}
         </div>
-        <h3>${challengeTitle(c)}</h3>
-        <p>${challengeBrief(c).slice(0, 105)}...</p>
+        <h3>${esc(challengeTitle(c))}</h3>
+        <p>${esc(challengeBrief(c).slice(0, 105))}...</p>
         <div class="lesson-foot"><span class="badge-go">${done ? t('card.redo') : t('card.start')} &rarr;</span></div>
       </article>`;
   }
@@ -171,9 +178,9 @@ export class Menu {
     const soon = l.status === 'soon';
     return `
       <article class="lesson-card ${soon ? 'is-soon' : ''}" data-id="${l.id}">
-        <div class="lesson-q">${lessonQuestion(l)}</div>
-        <h3>${lessonTitle(l)}</h3>
-        <p>${lessonTagline(l)}</p>
+        <div class="lesson-q">${esc(lessonQuestion(l))}</div>
+        <h3>${esc(lessonTitle(l))}</h3>
+        <p>${esc(lessonTagline(l))}</p>
         <div class="lesson-foot">${soon ? `<span class="badge-soon">${t('card.soon')}</span>` : `<span class="badge-go">${t('card.openLesson')} &rarr;</span>`}</div>
       </article>`;
   }

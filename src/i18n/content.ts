@@ -258,6 +258,87 @@ const LESSONS_EN: Record<string, LessonEn> = {
 };
 
 const CHALLENGES_EN: Record<string, ChallengeEn> = {
+  'web-sqli': {
+    title: 'Exploit: SQL injection',
+    brief:
+      "The web app's login form builds its SQL by concatenating strings. Log in as admin WITHOUT knowing the password, then leak every password through the search box. Then turn on parameterized queries and show the same payload is useless.",
+    objectives: {
+      bypass: 'Log in as admin with no password (auth bypass)',
+      exfil: 'Leak passwords via a UNION in the search box',
+      patched: 'Patch (harden sqli on); the injection login is then rejected (401)',
+    },
+    hints: [
+      'app login "admin\'--" "x"  — the \' closes the username string, and -- comments out the password check.',
+      'app search "x%\' UNION SELECT password FROM users --"  — grafts the users table onto the article list.',
+      'Patch: harden sqli on. Then app login "admin\'--" "x" again — now it is a 401.',
+    ],
+    debrief:
+      'The real fix is not filtering quotes, it is NOT concatenating input into the statement. A parameterized query sends the statement and the data over two separate channels, so input is never interpreted as SQL. In .NET that means parameters (Dapper/EF Core) — never build SQL with string interpolation.',
+  },
+  'web-xss': {
+    title: 'Exploit: stored XSS',
+    brief:
+      'The comment page embeds user text straight into HTML. Plant a comment containing <script>, render the page, and show the script executes in the victim\'s browser. Then turn on output escaping and render again.',
+    objectives: {
+      fired: 'The <script> payload executes on render (stored XSS)',
+      patched: 'Patch (harden xss on); re-rendering no longer runs the payload',
+    },
+    hints: [
+      'app comment "<script>steal(document.cookie)</script>"  — store the payload.',
+      'app render  — the page embeds it raw, so the script runs.',
+      'Patch: harden xss on. app render again — the payload shows up as &lt;script&gt; and does not run.',
+    ],
+    debrief:
+      'XSS is fixed on OUTPUT, not input: escape data for its exact context (HTML, attribute, JS) at render time. Do not trust "sanitized on save" — the same data can be shown in many contexts. Add a CSP to limit the damage from anything that slips through.',
+  },
+  'web-ssrf': {
+    title: 'Exploit: SSRF to cloud metadata',
+    brief:
+      'An "image preview from URL" feature makes the server fetch a user-supplied URL. Force it to call the internal cloud metadata endpoint (169.254.169.254) and pull temporary credentials. Then turn on the guard and show it blocked.',
+    objectives: {
+      metadata: 'Reach the metadata endpoint and pull credentials',
+      patched: 'Patch (harden ssrf on); the same URL is blocked (403)',
+    },
+    hints: [
+      'app fetch "http://169.254.169.254/latest/meta-data/iam/security-credentials/"  — the cloud metadata link-local address.',
+      'With the guard off, the server goes anywhere — including internal networks the internet can\'t reach.',
+      'Patch: harden ssrf on. Fetch that URL again — 403, because the host is in the link-local range.',
+    ],
+    debrief:
+      'SSRF turns your server into a proxy for attacking the internal network. Fix it by resolving the host, then refusing loopback, private (10/8, 172.16/12, 192.168/16) and link-local (169.254/16) — check the RESOLVED IP, not the URL string (to resist DNS rebinding, redirects, or odd IP encodings). Best of all, allowlist the destination.',
+  },
+  'web-traversal': {
+    title: 'Exploit: path traversal',
+    brief:
+      'A file-download endpoint joins the user-supplied filename onto the web directory with no check. Use a ../ sequence to read a secret file outside the web root (e.g. /etc/passwd or a secrets file). Then turn on path confinement and try again.',
+    objectives: {
+      escaped: 'Read a file OUTSIDE the web root using ../',
+      patched: 'Patch (harden traversal on); the same path is blocked (403)',
+    },
+    hints: [
+      'app download "../../../etc/passwd"  — each ../ climbs one level out of the web directory.',
+      'app download "../../app/config/secrets.env"  — or aim straight at the secrets file.',
+      'Patch: harden traversal on. The same path is now 403, because it is canonicalized then boundary-checked.',
+    ],
+    debrief:
+      'Path traversal is fixed by CANONICALIZING the path first (resolving every ../), then checking the result stays inside the allowed root — check after normalizing, not before. Filtering the raw "../" string is not enough (there are encodings, ....//, absolute paths). Best is to map filenames to an allowlist of ids.',
+  },
+  'web-cmdi': {
+    title: 'Exploit: command injection',
+    brief:
+      'A "connectivity check" tool runs ping by concatenating the user host into a shell string. Inject a second command to read /etc/shadow. Then switch to passing arguments as an array and show the payload is neutralized.',
+    objectives: {
+      injected: 'Inject and run a second command (RCE)',
+      patched: 'Patch (harden cmdi on); the same payload is rejected (400)',
+    },
+    hints: [
+      'app ping "8.8.8.8; cat /etc/shadow"  — the ; ends the ping command, then runs yours.',
+      'Also try: app ping "8.8.8.8 && whoami"  or  app ping "$(id)".',
+      'Patch: harden cmdi on. The same payload is now 400, because the host is passed as an array argument, not through a shell.',
+    ],
+    debrief:
+      'Command injection disappears when there is NO shell to inject into: use execFile/exec with an argument array (["ping","-c1",host]) instead of building a string for sh -c. If a shell is unavoidable, validate input against a strict allowlist (hostname/IP only). Blocklisting characters is a losing race.',
+  },
   'ex-algconf': {
     title: 'Exploit: alg-confusion',
     brief: 'This server accepts both HS256 and RS256 and trusts the alg field. Get an admin token by re-signing your own token with HS256, using the public key as the secret. Land a 200, then patch it.',
@@ -552,6 +633,7 @@ const CHALLENGES_EN: Record<string, ChallengeEn> = {
 
 const CH_SECTION_EN: Record<string, string> = {
   ex: 'Exploit a vulnerability',
+  web: 'OWASP web',
   cc: 'Hands-on console challenges',
   ch: 'Configuration challenges',
 };

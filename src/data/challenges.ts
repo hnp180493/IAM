@@ -3,6 +3,7 @@ import type { FlowId } from './lessons';
 import type { HudState } from '../ui/Hud';
 import { CONSOLE_CHALLENGES } from './consoleChallenges';
 import { EXPLOIT_CHALLENGES } from './exploitChallenges';
+import { WEB_CHALLENGES } from './webChallenges';
 
 export interface ChallengeContext {
   packets: Packet[];
@@ -310,4 +311,4 @@ const KNOB_CHALLENGES: Challenge[] = [
  * Console đứng trước, vì đó là loại thực hành thật. Loại dropdown giữ lại làm
  * bước khởi động cho người chưa quen thuật ngữ.
  */
-export const CHALLENGES: Challenge[] = [...EXPLOIT_CHALLENGES, ...CONSOLE_CHALLENGES, ...KNOB_CHALLENGES];
+export const CHALLENGES: Challenge[] = [...EXPLOIT_CHALLENGES, ...WEB_CHALLENGES, ...CONSOLE_CHALLENGES, ...KNOB_CHALLENGES];

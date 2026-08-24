@@ -1,220 +1,255 @@
 # IAM Lab
 
-Lab tương tác để học xác thực và phân quyền. Chạy từng luồng OAuth theo chặng,
-click vào chặng nào cũng xem được HTTP thật đã chạy trên dây, rồi mổ token ra
-từng claim — và tự tay sửa nó để xem chỗ nào bắt được.
+An interactive lab for learning authentication and authorization. Run each OAuth
+flow hop by hop, click any hop to see the real HTTP that crossed the wire, then
+take a token apart claim by claim — and hand-edit it to see exactly which check
+catches you.
 
-**Song ngữ Việt / English** — nút EN/VI ở góc phải menu, lưu lựa chọn lại. Giao
-diện, điều hướng, tiêu đề bài học và từ điển thuật ngữ đã dịch đầy đủ tiếng Anh;
-phần văn bản sâu trong bài (các bước, tổng kết, output console) hiện vẫn tiếng
-Việt và dịch dần qua khung i18n trong `src/i18n/`. Tên tham số giao thức
-(`code_challenge`, `S256`, `aud`, `exp`) luôn giữ tiếng Anh vì là chuỗi chạy thật.
+**Bilingual (English / Vietnamese)** — the EN/VI button at the top-right of the
+menu toggles the entire app and remembers your choice: UI chrome, navigation,
+lesson content, challenge briefs, the glossary, console output, packet-flow
+notes, server error reasons, and the policy-engine traces are all fully
+translated. Protocol parameter names (`code_challenge`, `S256`, `aud`, `exp`)
+always stay in English because they are the real strings that travel on the wire.
 
-## Chạy
+## Run
 
 ```bash
 npm install
 npm run dev
 ```
 
-13 trong 14 bài chạy thuần trong trình duyệt, không cần gì thêm. Riêng bài
-"Chạy trên OpenIddict thật" cần authorization server thật:
+15 of the 16 lessons run entirely in the browser with nothing else needed. Only
+"Run on real OpenIddict" needs a real authorization server:
 
 ```bash
 cd server-dotnet/IamLab.AuthServer
 dotnet run --urls http://localhost:5181
 ```
 
-## Thực hành
+## Practice
 
-Ba kiểu, xếp theo mức độ bạn phải tự làm.
+Twenty-two challenges across four tracks, ordered by how much you have to do
+yourself, plus an endless Red Team mode.
 
-### 0. Red Team mode — tấn công dồn dập, phòng thủ real-time
+### 0. Red Team mode — relentless attacks, real-time defense
 
-Chế độ vô hạn. Cứ vài giây một cấu hình phòng thủ bị tắt, và tấn công leo thang
-theo thời gian. Dùng `audit` để soi, `harden <cấu hình> on` để vá, trước khi thanh
-toàn vẹn về 0. Vá càng nhanh càng nhiều điểm.
+An endless mode. Every few seconds a defensive setting is switched off, and the
+attacks escalate over time. Use `audit` to inspect, `harden <setting> on` to
+patch, before your integrity bar hits zero. The faster you patch, the more points.
 
-**15 loại tấn công**, mỗi cái phá đúng một cờ phòng thủ **có thật** — không có cái nào
-là thông báo suông, và `audit` đọc lại trạng thái thật (15 phép kiểm tra) nên không
-ghi điểm được nếu không thực sự vá.
+**20 attack types**, each one flipping a **real** defensive flag — none is a mere
+notification, and `audit` re-reads live state (20 checks) so you cannot score
+without actually patching.
 
-### 1. Khai thác lỗ hổng (3 cái) — hack rồi vá, trong cùng một bài
+### 1. Exploit a vulnerability (6) — hack it, then patch it, in one challenge
 
-Mỗi bài bắt đầu với hệ thống đang có một lỗ hổng thật. Bạn phải khai thác được
-(API trả `200` với token giả), rồi vá, rồi xác nhận cùng token đó giờ bị chặn.
+Each challenge starts with the system already holding a real hole. You have to
+exploit it (the API returns `200` for a forged token), then patch it, then
+confirm the same token is now rejected.
 
-| Khai thác | Cơ chế |
+| Exploit | Mechanism |
 |---|---|
-| alg-confusion (HS256/RS256) | Ký lại token bằng HS256, secret là **public key thật** lấy từ JWKS. Crypto thật — HMAC thật. |
-| Key nhúng trong token (jwk/jku) | Ký token bằng **khoá của chính bạn**, nhúng public key vào header; server ngây thơ verify bằng đúng key đó |
-| Bỏ verify chữ ký | Sửa `roles=admin` giữ chữ ký cũ, server không kiểm nên nhận |
-| Audience confusion | Token của API công khai gọi được `/payroll` của API nội bộ |
-| Session fixation | Gài sid biết trước, nạn nhân đăng nhập, sid không đổi → chiếm phiên |
-| Refresh token dùng mãi | Không rotation → refresh bị trộm dùng vô hạn; bật rotation thì reuse thu hồi cả family |
+| alg-confusion (HS256/RS256) | Re-sign the token with HS256, using the **real public key** from JWKS as the secret. Real crypto — real HMAC. |
+| Key embedded in the token (jwk/jku) | Sign the token with **your own key**, embed your public key in the header; a naive server verifies against that exact key |
+| Signature verification off | Edit `roles=admin` keeping the old signature; the server never checks, so it accepts |
+| Audience confusion | A public-API token calls the internal API's `/payroll` |
+| Session fixation | Plant a known sid, the victim logs in, the sid never changes → session takeover |
+| Refresh token forever | No rotation → a stolen refresh works indefinitely; turn rotation on and reuse revokes the whole family |
 
-alg-confusion và key-injection là hai bài đáng nhất — cả hai đều tạo ra **chữ ký hợp
-lệ thật sự** bằng crypto thật:
+alg-confusion and key-injection are the two most rewarding — both produce a
+**genuinely valid signature** using real crypto:
 
 ```
-$ jwt forge @access --set roles=admin --hs256 <public key>   # HMAC bằng public key
-$ jwt forge @access --set roles=admin --own-key              # ký bằng khoá attacker, nhúng vào header
+$ jwt forge @access --set roles=admin --hs256 <public key>   # HMAC with the public key
+$ jwt forge @access --set roles=admin --own-key              # sign with the attacker's key, embed it in the header
 $ curl /me --token @forged                                    # 200 OK, roles=admin
-$ harden hs256 on   (hoặc: harden jku on)                     # vá → 401
+$ harden hs256 on   (or: harden jku on)                       # patch → 401
 ```
 
-### 2. Thử thách gõ tay (6 cái) — không có đáp án để bấm thử
+### 2. OWASP web (5) — the classics beyond Auth/IAM
 
-Console riêng, gõ lệnh thật. Mục tiêu tick ngay sau mỗi lệnh.
+The same hack-then-patch loop against a deliberately vulnerable web app, driven
+by the `app` command in the console. Each vulnerability has a real defensive flag
+in the posture, and the payloads work because they genuinely break the structure
+— not because a string matched a known-payload list.
+
+| Exploit | Mechanism | Patch |
+|---|---|---|
+| SQL injection | `app login "admin'--" x` bypasses auth; `app search "x%' UNION SELECT password FROM users --"` leaks the password table | `harden sqli on` |
+| Stored XSS | `app comment "<script>…</script>"` then `app render` executes the payload | `harden xss on` |
+| SSRF | `app fetch "http://169.254.169.254/…"` reaches cloud metadata credentials | `harden ssrf on` |
+| Path traversal | `app download "../../../etc/passwd"` reads a file outside the web root | `harden traversal on` |
+| Command injection | `app ping "8.8.8.8; cat /etc/shadow"` runs a second command (RCE) | `harden cmdi on` |
+
+Each patch flips the app from string-concatenation to the safe primitive
+(parameterized queries, output escaping, an SSRF guard on the resolved IP,
+canonicalize-then-confine, and array args instead of a shell), and the same
+payload is then rejected.
+
+### 3. Hands-on console challenges (6) — no answers to click through
+
+A dedicated console, real commands. Objectives tick right after each command.
 
 ```
 $ authorize --pkce plain
-$ token --code code-xxx --verifier <chuỗi bạn đọc được từ URL>
+$ token --code code-xxx --verifier <the string you read off the URL>
 $ jwt forge @access --set roles=admin
 $ curl /me --token @forged
 $ policy eval alice delete doc:42 --model all
 ```
 
-| Thử thách | Bạn phải làm gì |
+| Challenge | What you have to do |
 |---|---|
-| Tự tay đăng nhập | Gõ đủ 3 bước của code + PKCE cho tới khi API trả 200 |
-| Đóng vai kẻ tấn công | Trộm token của alice qua `plain`, rồi chứng minh `S256` chặn được |
-| Làm API chấp nhận token giả | Sửa token 3 hướng, ghi nhận mỗi hướng chết ở phép kiểm tra nào |
-| Chẩn đoán lỗi 403 | Tái hiện → đọc token tìm nguyên nhân → sửa ra 200 |
-| Tìm chỗ phân quyền bất đồng | Tìm tình huống 3 mô hình bất đồng, và một tình huống đồng thuận |
-| Chứng minh phiên thu hồi được ngay | Dùng lệnh chứng minh session huỷ được mà JWT thì không |
+| Log in by hand | Type all 3 steps of code + PKCE until the API returns 200 |
+| Play the attacker | Steal alice's token via `plain`, then prove `S256` blocks it |
+| Make the API accept a fake token | Edit the token 3 ways, note which check each one dies at |
+| Diagnose a 403 | Reproduce → read the token to find the cause → fix it to a 200 |
+| Find where authorization disagrees | Find a case where all 3 models disagree, and one where they agree |
+| Prove sessions revoke instantly | Prove with commands that a session revokes but a JWT does not |
 
-Lệnh có tab completion, lịch sử mũi tên lên/xuống, và token lưu theo tên gọi bằng
-`@access` / `@forged`.
+Commands have tab completion, up/down history, and tokens are saved by name and
+referenced as `@access` / `@forged`.
 
-### 3. Thử thách cấu hình (5 cái) — bước khởi động
+### 4. Configuration challenges (5) — the warm-up
 
-Dropdown, dành cho lúc chưa quen thuật ngữ. "Diệt phiên zombie" có hai công tắc và
-**bật một cái là chưa đủ**.
+Dropdowns, for when the terminology is still new. "Kill the zombie session" has
+two switches and **flipping one is not enough**.
 
-| Thử thách | Tình huống |
+| Challenge | Situation |
 |---|---|
-| Vá lỗ PKCE | Có người đổi được code bị trộm thành token. Chặn lại, client thật vẫn phải vào được. |
-| Chặn audience confusion | API nội bộ đang trả bảng lương cho token của API công khai. |
-| Cắt scope về mức tối thiểu | App chỉ cần đọc mà đang xin cả `admin:all`. |
-| Diệt phiên zombie | Đăng xuất rồi mà App 2 vẫn thấy đang đăng nhập. |
-| Điều tra: đăng nhập hỏng | Đổi domain xong không ai vào được. Tìm `redirect_uri` đúng. |
+| Patch the PKCE hole | Someone exchanged a stolen code for a token. Block it, but the real client must still get in. |
+| Stop audience confusion | The internal API is returning payroll data for a public-API token. |
+| Cut scopes to the minimum | The app only needs to read but is requesting `admin:all`. |
+| Kill the zombie session | Logged out, yet App 2 still shows signed in. |
+| Investigate: broken login | After a domain change nobody can get in. Find the right `redirect_uri`. |
 
-### 4. Sửa và bắn lại
+### 5. Tamper & replay
 
-Ở bài "Sửa token để lên admin", bạn tự sửa claim rồi bắn token giả vào API thật.
+In "Edit a token to become admin", you hand-edit the claims and fire the forged
+token at the real API.
 
-### 5. Sửa C# rồi audit
+### 6. Fix the C#, then audit
 
-Bộ kiểm tra tự động tấn công server thật của bạn:
+An automated checker attacks your real server:
 
 ```bash
 npm run audit
 ```
 
-13 phép kiểm tra, mỗi cái nêu rõ vấn đề, vì sao nó nguy hiểm, và dòng code cần sửa.
-Nó **không đọc file cấu hình** — nó tấn công thật rồi kết luận từ phản hồi thật, nên
-sửa comment không lừa được nó. Muốn thấy nó bắt lỗi thì tự tạo lỗ hổng:
+13 checks, each naming the problem, why it is dangerous, and the line of code to
+fix. It **does not read your config file** — it attacks for real and concludes
+from the real response, so editing a comment won't fool it. To watch it catch a
+bug, introduce a hole yourself:
 
 ```bash
 LAB_ALLOW_PLAIN_PKCE=1 dotnet run --urls http://localhost:5181
 ```
 
-Bộ audit chuyển thành 9/10 và chỉ đúng chỗ.
+The audit drops to 12/13 and points at the exact spot.
 
-## Crypto là thật
+## The crypto is real
 
-Đây là mô phỏng *network*, không phải mô phỏng *mật mã*. Mọi token được ký bằng
-khoá RSA 2048-bit sinh ngay trong trình duyệt bạn, và mọi lần từ chối là một
-phép kiểm tra thật sự thất bại:
+This is a *network* simulation, not a *cryptography* simulation. Every token is
+signed with a 2048-bit RSA key generated right in your browser, and every
+rejection is a real check actually failing:
 
-- `code_challenge` là bản băm SHA-256 thật (RFC 7636)
-- token là JWT RS256 thật, verify bằng JWKS thật
-- mật khẩu băm bằng PBKDF2-HMAC-SHA256 thật, 100.000 vòng
-- sửa một byte trong payload là chữ ký sai, vì nó sai thật
+- `code_challenge` is a real SHA-256 hash (RFC 7636)
+- tokens are real RS256 JWTs, verified against a real JWKS
+- passwords are hashed with real PBKDF2-HMAC-SHA256, 100,000 rounds
+- flip one byte in the payload and the signature is wrong, because it genuinely is
 
-Nên khi lab nói kẻ tấn công không tiêu được authorization code đã trộm dưới
-`S256`, đó không phải kết quả dàn dựng. Đó là SHA-256 từ chối bị đảo ngược.
+So when the lab says an attacker can't redeem a stolen authorization code under
+`S256`, that isn't a staged outcome. That is SHA-256 refusing to be reversed.
 
-## 14 bài học
+## 16 lessons
 
-| Chương | Bài | Cho thấy điều gì |
+| Chapter | Lesson | What it shows |
 |---|---|---|
-| 1. Nền tảng | Cookie phiên và token khác nhau ra sao | Huỷ phiên có hiệu lực ngay — điều JWT không làm được |
-| 2. OAuth 2.0 | Luồng đăng nhập chuẩn | 11 chặng của một lần đăng nhập, và vì sao phải dài thế |
-| | Không có PKCE: mất tài khoản | Kẻ tấn công trộm code rồi đổi thành token thật |
-| | S256 chặn kẻ trộm | Vẫn bị trộm code, nhưng `400 invalid_grant` |
-| | PKCE hạ cấp xuống `plain` | Bật PKCE mà vẫn mất, vì sai một tham số |
-| 3. JWT | Mổ xẻ JWT | 13 claim, 8 phép kiểm tra, hover ra giải thích |
-| | Token hết hạn | Tua 60x, xem token 300 giây chết trong 5 giây |
-| | Sửa token để lên admin | Bạn là người tấn công: sửa claim rồi bắn lại vào API |
-| | Audience confusion | Token hợp lệ của API A mở được API B |
-| 4. Phân quyền | 401 khác 403 ở đâu | Token hoàn hảo vẫn bị chặn vì thiếu scope |
-| | RBAC, ABAC, ReBAC | Một yêu cầu, ba mô hình, ba câu trả lời khác nhau |
-| 5. SSO | Đăng nhập một lần, vào hai app | Phiên nằm ở auth server, không ở app |
-| | Đăng xuất mới là phần khó | Phiên zombie sau khi bấm logout |
-| 6. OpenIddict | Chạy trên OpenIddict thật | Đối chiếu mock với authorization server thật |
-| 6. OpenIddict | Client Credentials (M2M) | Đăng nhập khi không có người dùng nào |
-| 6. OpenIddict | Refresh rotation trên server thật | OpenIddict bắt refresh token bị dùng lại |
+| 1. Foundations | Session cookies vs tokens | Revoking a session takes effect immediately — the one thing a JWT can't do |
+| 2. OAuth 2.0 | A standard login flow | 11 hops of one login, and why it has to be that long |
+| | No PKCE: account takeover | An attacker steals the code and exchanges it for a real token |
+| | S256 stops the thief | Still steals the code, but gets `400 invalid_grant` |
+| | PKCE downgraded to `plain` | PKCE on, yet lost — over one wrong parameter |
+| 3. JWT | Take a token apart | 13 claims, 8 checks, hover for the explanation |
+| | Token expiry | Fast-forward 60x, watch a 300-second token die in 5 seconds |
+| | Edit a token to become admin | You are the attacker: edit a claim and fire it back at the API |
+| | Audience confusion | A valid API-A token opens API B |
+| 4. Authorization | How 401 differs from 403 | A perfect token still blocked, for a missing scope |
+| | RBAC, ABAC, ReBAC | One request, three models, three different answers |
+| 5. SSO | One login, two apps | The session lives at the auth server, not the app |
+| | Logout is the hard part | Zombie sessions after you click log out |
+| 6. OpenIddict | Run on real OpenIddict | Cross-check the mock against a real authorization server |
+| | Client Credentials (M2M) | Logging in when there is no user |
+| | Refresh rotation on a real server | OpenIddict catches a reused refresh token |
 
-## Sửa và bắn lại
+## Tamper & replay
 
-Ở bài "Sửa token để lên admin", nút **Sửa và bắn lại** trên token inspector mở
-một hộp thoại cho sửa trực tiếp header và payload. Token được ghép lại với
-**chữ ký gốc giữ nguyên** — đúng những gì kẻ tấn công làm được, vì họ không có
-private key. Bốn cú tấn công có sẵn, và mỗi cú chết ở một phép kiểm tra khác nhau:
+In "Edit a token to become admin", the **Tamper & replay** button on the token
+inspector opens a dialog to edit the header and payload directly. The token is
+reassembled with the **original signature kept** — exactly what an attacker can
+do, since they don't have the private key. Four attacks are prebuilt, and each
+dies at a different check:
 
-| Cú tấn công | Chết ở |
+| Attack | Dies at |
 |---|---|
-| Nâng `roles` lên admin | `signature` |
-| Đổi `alg` thành `none` | `alg` rồi `signature` |
-| Gia hạn `exp` thêm 10 năm | `signature` |
-| Đổi `aud` sang API nội bộ | `signature` và `aud` |
+| Raise `roles` to admin | `signature` |
+| Change `alg` to `none` | `alg` then `signature` |
+| Extend `exp` by 10 years | `signature` |
+| Change `aud` to the internal API | `signature` and `aud` |
 
-## Điều chỉ server thật mới lộ ra
+## What only a real server reveals
 
-Bài chương 6 tồn tại để đối chiếu, và nó đã bắt được một chỗ mock nói sai.
+The chapter-6 lesson exists to cross-check, and it caught a place where the mock
+was wrong.
 
-`RequireProofKeyForCodeExchange()` **chỉ ép PKCE phải có mặt, không ép method
-phải là `S256`**. OpenIddict vẫn quảng cáo `plain` trong discovery và vẫn nhận
-`plain` ở `/connect/token` — đã kiểm chứng: `200 OK`. Muốn chặn thật thì phải bỏ
-nó ra khỏi danh sách:
+`RequireProofKeyForCodeExchange()` **only forces PKCE to be present, not that the
+method be `S256`**. OpenIddict still advertises `plain` in discovery and still
+accepts `plain` at `/connect/token` — verified: `200 OK`. To actually block it,
+you have to remove it from the list:
 
 ```csharp
 options.AllowAuthorizationCodeFlow()
        .RequireProofKeyForCodeExchange();
 
-// Dòng này mới là dòng thật sự chặn plain.
+// This line is the one that actually blocks plain.
 options.Configure(o => o.CodeChallengeMethods.Remove(CodeChallengeMethods.Plain));
 ```
 
-Đặt `LAB_ALLOW_PLAIN_PKCE=1` rồi khởi động lại server để mở lại `plain` và so sánh.
+Set `LAB_ALLOW_PLAIN_PKCE=1` and restart the server to re-enable `plain` and
+compare.
 
 ## Layout
 
 ```
 src/
-  crypto/   jose.ts     ký/verify RS256, JWKS, verdict là danh sách check
-            pkce.ts     dẫn xuất và kiểm tra S256
-  server/   MockAuthServer.ts  /authorize + /token + phiên SSO
-            ResourceApi.ts     chỉ verify bằng public key
-            SessionServer.ts   PBKDF2 + phiên thu hồi được
-  engine/   PolicyEngine.ts    RBAC / ABAC / ReBAC, có vết suy luận
+  crypto/   jose.ts     RS256 sign/verify, JWKS, verdict as a list of checks
+            pkce.ts     S256 derivation and verification
+  server/   MockAuthServer.ts  /authorize + /token + SSO session
+            ResourceApi.ts     verifies with the public key only
+            SessionServer.ts   PBKDF2 + revocable sessions
+  engine/   PolicyEngine.ts    RBAC / ABAC / ReBAC, with a reasoning trace
+            Posture.ts         every defensive flag, and the audit checks
+            WebVulnServer.ts   the vulnerable web app (OWASP track)
+            RedTeamEngine.ts   escalating attacks that read live posture
+            LabSession.ts      the console command surface
   flows/    authCodePkce · sessionCookie · audConfusion · policyModels
-            sso · openiddictReal
-  ui/       Menu · Tutorial · Stage · Inspector · Hud · TamperDialog
-  core/     Clock.ts     thời gian mô phỏng, để quan sát token hết hạn
-  data/     lessons.ts · glossary.ts (22 thuật ngữ) · claims.ts
+            sso · openiddictReal · openiddictExtra
+  ui/       Menu · Tutorial · Stage · Inspector · Hud · TamperDialog · Console
+  core/     Clock.ts     simulated time, so you can watch tokens expire
+  data/     lessons.ts · glossary.ts · claims.ts · attacks.ts
+            challenges.ts · exploitChallenges · consoleChallenges · webChallenges
+  i18n/     index.ts (tr/t/pick) · content.ts (EN overlay for large content)
 
 server-dotnet/IamLab.AuthServer/
-  Program.cs             OpenIddict 6 trên ASP.NET Core 9, SQLite
+  Program.cs             OpenIddict 6 on ASP.NET Core 9, SQLite
 ```
 
-## Vì sao sơ đồ là 2D
+## Why the diagram is 2D
 
-k8sgames vẽ một cluster Kubernetes — thứ có *không gian*, nên cảnh 3D là xứng
-đáng. Một luồng auth là thứ có *thời gian*: điều đáng xem là thứ tự các chặng và
-mỗi chặng mang theo cái gì. Nên sân khấu ở đây là sequence diagram, và trục dọc
-của nó chính là thời gian.
+k8sgames draws a Kubernetes cluster — something *spatial*, so a 3D scene earns its
+keep. An auth flow is *temporal*: what's worth seeing is the order of the hops and
+what each one carries. So the stage here is a sequence diagram, and its vertical
+axis is time.
 
-Thiết kế và những phần chưa làm nằm ở [docs/DESIGN.md](docs/DESIGN.md).
+The design and the still-unbuilt parts live in [docs/DESIGN.md](docs/DESIGN.md).

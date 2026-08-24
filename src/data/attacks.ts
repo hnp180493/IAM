@@ -1,0 +1,266 @@
+import { getLang } from '../i18n';
+import type { PostureFlags } from '../engine/Posture';
+
+export interface AttackDef {
+  id: string;
+  name: string;
+  nameEn: string;
+  severity: 1 | 2 | 3;
+  /** Cái người chơi nhìn thấy trong bảng cảnh báo. Không nói thẳng cách sửa. */
+  symptom: string;
+  symptomEn: string;
+  /** Lệnh giúp nhìn ra vấn đề. Chỉ hiện khi người chơi mở gợi ý. */
+  detect: string;
+  /** Phá một cờ phòng thủ. Trả về false nếu cờ đó đã bị phá rồi. */
+  apply: (f: PostureFlags) => boolean;
+  /** Đã vá xong chưa. */
+  fixed: (f: PostureFlags) => boolean;
+  fix: string;
+  /** Điểm toàn vẹn mất mỗi giây nếu để đó. */
+  drain: number;
+  explain: string;
+  explainEn: string;
+}
+
+/** Đọc đúng ngôn ngữ hiện tại cho tên/triệu chứng/giải thích của một cuộc tấn công. */
+export function attackName(d: AttackDef): string {
+  return getLang() === 'en' ? d.nameEn : d.name;
+}
+export function attackSymptom(d: AttackDef): string {
+  return getLang() === 'en' ? d.symptomEn : d.symptom;
+}
+export function attackExplain(d: AttackDef): string {
+  return getLang() === 'en' ? d.explainEn : d.explain;
+}
+
+/**
+ * Mỗi cuộc tấn công phá đúng một cờ phòng thủ có thật, nên người chơi vá được
+ * bằng lệnh và `audit` xác nhận được. Không có cuộc nào chỉ là thông báo suông.
+ */
+export const ATTACKS: AttackDef[] = [
+  {
+    id: 'pkce-downgrade',
+    name: 'PKCE bị hạ cấp',
+    nameEn: 'PKCE downgraded',
+    severity: 3,
+    symptom: 'Log cho thấy client bắt đầu gửi code_challenge_method=plain và server vẫn nhận.',
+    symptomEn: 'Logs show the client now sending code_challenge_method=plain, and the server still accepts it.',
+    detect: 'audit',
+    apply: (f) => (f.allowPlainPkce ? false : ((f.allowPlainPkce = true), true)),
+    fixed: (f) => !f.allowPlainPkce,
+    fix: 'harden plain off',
+    drain: 2.5,
+    explain: 'Với plain, code_verifier nằm nguyên văn trong URL /authorize. Ai đọc được URL là tiêu được code.',
+    explainEn: 'With plain, code_verifier sits in plain text in the /authorize URL. Anyone who reads the URL can redeem the code.',
+  },
+  {
+    id: 'pkce-off',
+    name: 'PKCE bị tắt hoàn toàn',
+    nameEn: 'PKCE fully disabled',
+    severity: 3,
+    symptom: 'Có request /authorize không kèm code_challenge nào mà vẫn được phát code.',
+    symptomEn: 'An /authorize request with no code_challenge at all still gets a code issued.',
+    detect: 'audit',
+    apply: (f) => (!f.requirePkce ? false : ((f.requirePkce = false), true)),
+    fixed: (f) => f.requirePkce,
+    fix: 'harden pkce on',
+    drain: 3,
+    explain: 'Không có PKCE thì authorization code là bearer thuần: ai giữ người đó tiêu.',
+    explainEn: 'Without PKCE, an authorization code is a plain bearer credential: whoever holds it can redeem it.',
+  },
+  {
+    id: 'code-replay',
+    name: 'Authorization code bị replay',
+    nameEn: 'Authorization code replayed',
+    severity: 3,
+    symptom: 'Cùng một code xuất hiện hai lần trong log /token, cả hai lần đều thành công.',
+    symptomEn: 'The same code appears twice in the /token log, both times succeeding.',
+    detect: 'audit',
+    apply: (f) => (!f.codeSingleUse ? false : ((f.codeSingleUse = false), true)),
+    fixed: (f) => f.codeSingleUse,
+    fix: 'harden code on',
+    drain: 2.5,
+    explain: 'Code phải dùng một lần. Lần thứ hai là dấu hiệu nó đã lộ, và server thật thu hồi cả phiên.',
+    explainEn: 'A code must be single-use. A second use is a signal it has leaked, and a real server revokes the whole grant.',
+  },
+  {
+    id: 'open-redirect',
+    name: 'redirect_uri nới thành so tiền tố',
+    nameEn: 'redirect_uri loosened to prefix matching',
+    severity: 3,
+    symptom: 'Có code được đẩy tới một tên miền lạ bắt đầu bằng chuỗi hợp lệ.',
+    symptomEn: 'A code gets pushed to an unfamiliar domain that merely starts with a valid string.',
+    detect: 'audit',
+    apply: (f) => (!f.redirectExactMatch ? false : ((f.redirectExactMatch = false), true)),
+    fixed: (f) => f.redirectExactMatch,
+    fix: 'harden redirect on',
+    drain: 3,
+    explain: 'So tiền tố nghĩa là spa.example.com.evil.co được coi là hợp lệ, và code bay thẳng sang đó.',
+    explainEn: 'Prefix matching means spa.example.com.evil.co is treated as valid, and the code flies straight there.',
+  },
+  {
+    id: 'aud-public',
+    name: 'API công khai bỏ kiểm tra aud',
+    nameEn: 'Public API skips the aud check',
+    severity: 2,
+    symptom: 'API công khai đang nhận token có aud trỏ tới service khác.',
+    symptomEn: 'The public API is accepting tokens whose aud points to a different service.',
+    detect: 'audit',
+    apply: (f) => (!f.checkAudiencePublic ? false : ((f.checkAudiencePublic = false), true)),
+    fixed: (f) => f.checkAudiencePublic,
+    fix: 'harden aud on',
+    drain: 1.5,
+    explain: 'Chữ ký chứng minh ai phát token, không chứng minh phát cho ai.',
+    explainEn: 'A signature proves who issued the token, not who it was issued for.',
+  },
+  {
+    id: 'aud-internal',
+    name: 'API nội bộ bỏ kiểm tra aud',
+    nameEn: 'Internal API skips the aud check',
+    severity: 3,
+    symptom: 'Endpoint /payroll trả dữ liệu cho token vốn phát cho API công khai.',
+    symptomEn: 'The /payroll endpoint returns data for a token that was issued for the public API.',
+    detect: 'curl /payroll --api internal --token @access',
+    apply: (f) => (!f.checkAudienceInternal ? false : ((f.checkAudienceInternal = false), true)),
+    fixed: (f) => f.checkAudienceInternal,
+    fix: 'harden aud-internal on',
+    drain: 3,
+    explain: 'Service quyền thấp lấy token của chính nó gọi được service quyền cao. Đây là leo thang quyền.',
+    explainEn: 'A low-privilege service can use its own token to call a high-privilege one. This is privilege escalation.',
+  },
+  {
+    id: 'sig-off',
+    name: 'Verify chữ ký bị tắt',
+    nameEn: 'Signature verification disabled',
+    severity: 3,
+    symptom: 'Một token có payload không khớp chữ ký vẫn được API chấp nhận.',
+    symptomEn: 'A token whose payload no longer matches its signature is still accepted by the API.',
+    detect: 'jwt forge @access --set roles=admin  then  curl /me --token @forged',
+    apply: (f) => (!f.checkSignature ? false : ((f.checkSignature = false), true)),
+    fixed: (f) => f.checkSignature,
+    fix: 'harden signature on',
+    drain: 4,
+    explain: 'Đây là cửa mở lớn nhất: bỏ verify chữ ký thì ai cũng tự phong admin bằng cách sửa payload.',
+    explainEn: 'This is the widest open door: skip signature verification and anyone can self-promote to admin by editing the payload.',
+  },
+  {
+    id: 'hs256-confusion',
+    name: 'alg-confusion (HS256/RS256)',
+    nameEn: 'alg-confusion (HS256/RS256)',
+    severity: 3,
+    symptom: 'Server bắt đầu chấp nhận token ký HS256 bằng chính public key của nó.',
+    symptomEn: 'The server starts accepting tokens signed HS256 using its own public key.',
+    detect: 'jwt forge @access --set roles=admin --hs256 <public key>  then  curl /me --token @forged',
+    apply: (f) => (f.allowHs256 ? false : ((f.allowHs256 = true), true)),
+    fixed: (f) => !f.allowHs256,
+    fix: 'harden hs256 on',
+    drain: 4,
+    explain: 'Public key ai cũng lấy được từ JWKS. Nếu server tin trường alg và đem public key làm HMAC secret, kẻ tấn công ký token admin bằng đúng chuỗi đó.',
+    explainEn: 'Anyone can fetch the public key from JWKS. If the server trusts the alg field and uses the public key as an HMAC secret, an attacker signs an admin token with that exact string.',
+  },
+  {
+    id: 'alg-none',
+    name: 'Chấp nhận alg=none',
+    nameEn: 'Accepting alg=none',
+    severity: 3,
+    symptom: 'Có token với header alg="none" được nhận.',
+    symptomEn: 'A token with header alg="none" is being accepted.',
+    detect: 'jwt forge @access --set-header alg=none  then  curl /me --token @forged',
+    apply: (f) => (f.allowAlgNone ? false : ((f.allowAlgNone = true), true)),
+    fixed: (f) => !f.allowAlgNone,
+    fix: 'harden alg on',
+    drain: 3.5,
+    explain: 'Tin vào trường alg của token để chọn cách verify là để token tự quyết định nó có cần chữ ký hay không.',
+    explainEn: 'Trusting a token\'s own alg field to pick how to verify it lets the token decide for itself whether it even needs a signature.',
+  },
+  {
+    id: 'ttl-blowup',
+    name: 'Thời hạn token bị kéo dài',
+    nameEn: 'Token lifetime blown out',
+    severity: 2,
+    symptom: 'Access token mới phát ra có expires_in lớn bất thường.',
+    symptomEn: 'Newly issued access tokens carry an unusually large expires_in.',
+    detect: 'status',
+    apply: (f) => (f.accessTokenTtl > 900 ? false : ((f.accessTokenTtl = 86400), true)),
+    fixed: (f) => f.accessTokenTtl <= 900,
+    fix: 'harden ttl 300',
+    drain: 1.5,
+    explain: 'JWT không thu hồi được. Thời hạn 24 giờ nghĩa là một token bị trộm dùng được suốt 24 giờ.',
+    explainEn: 'A JWT cannot be revoked. A 24-hour lifetime means a stolen token stays usable for a full 24 hours.',
+  },
+  {
+    id: 'refresh-reuse',
+    name: 'Refresh token ngừng xoay',
+    nameEn: 'Refresh token stopped rotating',
+    severity: 2,
+    symptom: 'Cùng một refresh token đổi được token mới nhiều lần mà không bị thu hồi.',
+    symptomEn: 'The same refresh token can be exchanged for new tokens repeatedly without being revoked.',
+    detect: 'audit',
+    apply: (f) => (!f.refreshRotation ? false : ((f.refreshRotation = false), true)),
+    fixed: (f) => f.refreshRotation,
+    fix: 'harden refresh on',
+    drain: 1.5,
+    explain: 'Không rotation thì một refresh token bị trộm dùng được mãi. Rotation + phát hiện reuse là cách bắt được trộm.',
+    explainEn: 'Without rotation, a stolen refresh token works forever. Rotation plus reuse detection is how a thief gets caught.',
+  },
+  {
+    id: 'session-fixation',
+    name: 'Session fixation',
+    nameEn: 'Session fixation',
+    severity: 2,
+    symptom: 'Server giữ nguyên sid mà client mang tới thay vì phát sid mới sau đăng nhập.',
+    symptomEn: 'The server keeps the sid the client arrived with instead of issuing a fresh one after login.',
+    detect: 'audit',
+    apply: (f) => (!f.sessionRegenerate ? false : ((f.sessionRegenerate = false), true)),
+    fixed: (f) => f.sessionRegenerate,
+    fix: 'harden session on',
+    drain: 2,
+    explain: 'Kẻ tấn công gài trước một sid trên máy nạn nhân; nạn nhân đăng nhập, sid không đổi, và kẻ tấn công dùng sid đó vào tài khoản nạn nhân.',
+    explainEn: 'An attacker plants an sid on the victim\'s machine beforehand; the victim logs in, the sid never changes, and the attacker uses that same sid to enter the victim\'s account.',
+  },
+  {
+    id: 'state-csrf',
+    name: 'Client bỏ kiểm tra state',
+    nameEn: 'Client skips the state check',
+    severity: 2,
+    symptom: 'Callback được xử lý mà không so state với giá trị đã lưu.',
+    symptomEn: 'The callback is processed without comparing state against the stored value.',
+    detect: 'audit',
+    apply: (f) => (!f.stateChecked ? false : ((f.stateChecked = false), true)),
+    fixed: (f) => f.stateChecked,
+    fix: 'harden state on',
+    drain: 2,
+    explain: 'Không kiểm state là login CSRF: kẻ tấn công ép trình duyệt nạn nhân dùng authorization code của CHÚNG, nạn nhân đăng nhập nhầm vào tài khoản kẻ tấn công.',
+    explainEn: 'Skipping the state check is login CSRF: the attacker forces the victim\'s browser to use THEIR OWN authorization code, so the victim ends up logged into the attacker\'s account by mistake.',
+  },
+  {
+    id: 'jku-injection',
+    name: 'Tin key nhúng trong token (jku)',
+    nameEn: 'Trusting a key embedded in the token (jku)',
+    severity: 3,
+    symptom: 'Server verify token bằng key lấy từ chính header của token.',
+    symptomEn: 'The server verifies a token using a key taken from the token\'s own header.',
+    detect: 'jwt forge @access --set roles=admin --own-key  then  curl /me --token @forged',
+    apply: (f) => (f.trustJku ? false : ((f.trustJku = true), true)),
+    fixed: (f) => !f.trustJku,
+    fix: 'harden jku on',
+    drain: 4,
+    explain: 'Token tự đính kèm key verify. Kẻ tấn công ký bằng khoá của mình rồi nhúng public key của mình vào - server ngây thơ verify bằng đúng key đó nên luôn khớp.',
+    explainEn: 'The token carries its own verification key. An attacker signs with their own key and embeds their own public key — a naive server verifies against that exact key, so it always matches.',
+  },
+  {
+    id: 'logout-broken',
+    name: 'Back-channel logout ngừng hoạt động',
+    nameEn: 'Back-channel logout stopped working',
+    severity: 2,
+    symptom: 'Người dùng báo đăng xuất rồi mà app khác vẫn đang đăng nhập.',
+    symptomEn: 'Users report logging out, yet other apps still show them signed in.',
+    detect: 'audit',
+    apply: (f) => (!f.backchannelLogout ? false : ((f.backchannelLogout = false), true)),
+    fixed: (f) => f.backchannelLogout,
+    fix: 'harden logout on',
+    drain: 1.5,
+    explain: 'Đăng xuất chỉ có hiệu lực ở nơi được thông báo. Thiếu nó là phiên zombie trên máy dùng chung.',
+    explainEn: 'Logout only takes effect where it is announced. Without it, a shared machine ends up with a zombie session.',
+  },
+];
